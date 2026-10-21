@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>國教盟錄影提詞機</title>
+<style>
+/* 手機錄影提詞機：全螢幕相機畫面＋可拖曳提詞方塊＋錄影存檔 */
+:root{
+  --bg:#0a0b0d;
+  --fg:#f5f1e8;
+  --fg-dim:#9aa3b2;
+  --accent:#ffb84d;
+  --rec:#ff4d4d;
+  --panel:#16181d;
+  --line:#2c3038;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--fg);
+  font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  display:flex;flex-direction:column;overflow:hidden;
+  -webkit-user-select:none;user-select:none;
+}
+button{font-family:inherit}
+
+/* ===== 相機畫面 ===== */
+#field{position:relative;flex:1;min-height:0;overflow:hidden;background:#000}
+#camera{
+  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  transform:scaleX(-1);
+}
+#camera.no-mirror{transform:none}
+
+/* ===== 可移動提詞方塊 ===== */
+#box{
+  position:absolute;z-index:4;
+  display:flex;flex-direction:column;
+  background:rgba(8,9,12,.72);
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:14px;
+  overflow:hidden;
+  touch-action:none;
+  backdrop-filter:blur(2px);
+}
+#handle{
+  flex:none;display:flex;align-items:center;gap:8px;
+  padding:7px 12px;
+  background:rgba(29,33,42,.9);border-bottom:1px solid rgba(255,255,255,.12);
+  color:var(--fg-dim);font-size:13px;
+  cursor:grab;touch-action:none;
+}
+#handle .grip{letter-spacing:2px;color:var(--accent)}
+#handle:active{cursor:grabbing}
+#boxTime{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--fg)}
+#stage{position:relative;flex:1;min-height:0;overflow:hidden;cursor:pointer}
+#inner{
+  padding-left:16px;padding-right:16px;
+  white-space:pre-wrap;line-height:1.6;font-weight:700;
+  text-shadow:0 1px 3px rgba(0,0,0,.9);
+  will-change:transform;
+}
+#guide{
+  position:absolute;left:0;right:0;top:28%;height:0;
+  border-top:2px dashed rgba(255,184,77,.45);pointer-events:none;
+}
+#resizer{
+  position:absolute;right:0;bottom:0;width:38px;height:38px;z-index:3;
+  cursor:nwse-resize;touch-action:none;
+  display:flex;align-items:flex-end;justify-content:flex-end;
+  color:var(--fg-dim);padding:0 5px 2px 0;
+}
+#resizer::after{content:"◢";opacity:.75;font-size:17px}
+
+/* ===== 錄影狀態 ===== */
+#recBadge{
+  position:absolute;z-index:6;
+  top:calc(10px + env(safe-area-inset-top, 0px));
+  right:max(14px, env(safe-area-inset-right, 0px));
+  display:none;align-items:center;gap:8px;
+  background:rgba(0,0,0,.55);padding:6px 12px;border-radius:999px;
+  font-variant-numeric:tabular-nums;font-size:15px;
+}
+#recBadge.on{display:flex}
+#recDot{width:10px;height:10px;border-radius:50%;background:var(--rec);animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.25}}
+
+#stopFloat{
+  position:absolute;z-index:6;
+  top:calc(8px + env(safe-area-inset-top, 0px));
+  left:max(14px, env(safe-area-inset-left, 0px));
+  display:none;
+  border:0;border-radius:999px;
+  background:var(--rec);color:#fff;font-weight:700;font-size:15px;
+  padding:9px 16px;cursor:pointer;
+}
+#stopFloat.on{display:block}
+
+#countdown{
+  position:fixed;inset:0;z-index:30;display:none;
+  align-items:center;justify-content:center;
+  background:rgba(0,0,0,.5);
+  font-size:min(30vw,150px);font-weight:800;color:var(--accent);
+}
+#countdown.on{display:flex}
+
+/* 尚未開相機 */
+#camHint{
+  position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;gap:14px;
+  align-items:center;justify-content:center;color:var(--fg-dim);
+  text-align:center;padding:24px;background:var(--bg);
+}
+#camHint .t{font-size:20px;font-weight:700;color:var(--fg)}
+#camHint button{
+  font-size:18px;padding:12px 30px;border-radius:12px;border:0;
+  background:var(--accent);color:#1a1200;font-weight:700;cursor:pointer;
+}
+#camHint.hidden{display:none}
+#camErr{color:#ff9b9b;font-size:13px;max-width:34em;white-space:pre-wrap}
+
+/* ===== 底部控制列 ===== */
+#bar{
+  flex:none;display:flex;flex-wrap:wrap;gap:9px;align-items:center;
+  padding-top:8px;
+  padding-bottom:calc(8px + env(safe-area-inset-bottom, 0px));
+  padding-left:max(14px, env(safe-area-inset-left, 0px));
+  padding-right:max(14px, env(safe-area-inset-right, 0px));
+  background:var(--panel);border-top:1px solid var(--line);
+  transition:margin-bottom .35s, opacity .35s;
+}
+#bar.hide{margin-bottom:-160px;opacity:0;pointer-events:none}
+.btn{
+  border:1px solid var(--line);background:#20242c;color:var(--fg);
+  padding:9px 14px;border-radius:10px;font-size:15px;cursor:pointer;
+}
+.btn.go{background:var(--rec);border-color:var(--rec);color:#fff;font-weight:700}
+.btn:disabled{opacity:.4}
+.ctrl{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--fg-dim)}
+.ctrl input[type=range]{width:92px;accent-color:var(--accent)}
+.ctrl input[type=checkbox]{accent-color:var(--accent)}
+.num{min-width:2.4em;color:var(--fg);font-variant-numeric:tabular-nums}
+#hint{font-size:12px;color:var(--fg-dim);width:100%}
+@media (max-height:460px){
+  .btn{padding:6px 11px;font-size:14px}
+  #bar{gap:7px}
+  #hint{display:none}
+}
+
+/* ===== 稿件編輯 ===== */
+#editor{position:fixed;inset:0;z-index:20;display:none;background:rgba(0,0,0,.6)}
+#editor.on{display:block}
+#editorPanel{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(680px,94vw);height:min(560px,88vh);display:flex;flex-direction:column;gap:10px;
+  background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;
+}
+#editorPanel h2{margin:0;font-size:16px}
+#scriptBox{
+  flex:1;min-height:0;resize:none;
+  background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;
+  padding:12px;font-size:16px;line-height:1.7;font-family:inherit;
+  -webkit-user-select:text;user-select:text;
+}
+#editorPanel .row{display:flex;gap:10px;justify-content:flex-end}
+
+/* ===== 錄影結果 ===== */
+#result{position:fixed;inset:0;z-index:40;display:none;background:rgba(0,0,0,.72)}
+#result.on{display:block}
+#resultPanel{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(640px,94vw);max-height:90vh;display:flex;flex-direction:column;gap:12px;
+  background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;
+  overflow:auto;
+}
+#resultPanel h2{margin:0;font-size:16px}
+#playback{width:100%;border-radius:10px;background:#000;max-height:46vh}
+#resultPanel .row{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+#resultPanel .note{font-size:13px;color:var(--fg-dim)}
+a.btn{text-decoration:none;display:inline-block}
+</style>
+</head>
+<body>
+
+<div id="field">
+  <video id="camera" autoplay playsinline muted></video>
+
+  <div id="box">
+    <div id="handle"><span class="grip">⠿</span><span>按住拖曳</span><span id="boxTime">00:00</span></div>
+    <div id="stage">
+      <div id="inner"></div>
+      <div id="guide"></div>
+    </div>
+    <div id="resizer"></div>
+  </div>
+
+  <div id="recBadge"><span id="recDot"></span><span id="recTime">00:00</span></div>
+  <button id="stopFloat">■ 停止</button>
+  <div id="countdown">3</div>
+
+  <div id="camHint">
+    <div class="t">國教盟錄影提詞機</div>
+    <div>按下按鈕開啟相機與麥克風，瀏覽器詢問時請選「允許」。<br>建議手機橫放拍攝。</div>
+    <button id="startCamBtn">開啟相機</button>
+    <div id="camErr"></div>
+  </div>
+</div>
+
+<div id="bar">
+  <button class="btn go" id="recBtn" disabled>● 錄影</button>
+  <button class="btn" id="scrollBtn">▶ 捲動</button>
+  <button class="btn" id="topBtn">⟲ 回頂</button>
+  <button class="btn" id="editBtn">✏️ 稿件</button>
+  <span class="ctrl">速度 <input type="range" id="speed" min="10" max="180" value="48"><span class="num" id="speedVal">48</span></span>
+  <span class="ctrl">字級 <input type="range" id="fsize" min="18" max="90" value="34"><span class="num" id="fsizeVal">34</span></span>
+  <label class="ctrl"><input type="checkbox" id="mirrorCam" checked>預覽鏡像</label>
+  <span id="hint">拖方塊上緣＝移動　拖右下角 ◢＝調大小　點文字＝捲動/暫停　按「● 錄影」倒數 3 秒自動開錄＋捲稿</span>
+</div>
+
+<div id="editor">
+  <div id="editorPanel">
+    <h2>編輯稿件（存在這支手機的瀏覽器裡）</h2>
+    <textarea id="scriptBox"></textarea>
+    <div class="row">
+      <button class="btn" id="restoreBtn">清空稿件</button>
+      <button class="btn" id="closeEditor">完成</button>
+    </div>
+  </div>
+</div>
+
+<div id="result">
+  <div id="resultPanel">
+    <h2>錄影完成</h2>
+    <video id="playback" controls playsinline></video>
+    <div class="note">「儲存影片」會打開分享選單，選「儲存影片」就會存進手機相簿；若沒有分享選單則會直接下載到檔案 App。</div>
+    <div class="row">
+      <button class="btn go" id="saveBtn">⬇ 儲存影片</button>
+      <button class="btn" id="discardBtn">捨棄，重錄</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  var field=$("field"), box=$("box"), handle=$("handle"), resizer=$("resizer");
+  var stage=$("stage"), inner=$("inner"), bar=$("bar"), camera=$("camera");
+  var speedEl=$("speed"), fsizeEl=$("fsize"), recBtn=$("recBtn"), scrollBtn=$("scrollBtn");
+  var stream=null, recorder=null, chunks=[], lastBlob=null, lastExt="mp4", lastUrl=null;
+  var recording=false, recStart=0, recTimer=null;
+  var scrolling=false, offset=0, lastTs=0, rafId=0;
+  var elapsed=0, startedAt=0, timeTimer=null, wakeLock=null;
+  var MIN_W=200, MIN_H=150;
+
+  var DEFAULT_SCRIPT = "（還沒有稿子）\n\n請點下方「✏️ 稿件」，把要念的稿子貼進來。\n\n稿子只會存在這支手機的瀏覽器裡，不會上傳到任何地方。";
+
+  /* ---------- 方塊拖曳與縮放 ---------- */
+  function clampBox(x,y,w,h){
+    var fw=field.clientWidth, fh=field.clientHeight;
+    w=Math.max(MIN_W, Math.min(w, fw));
+    h=Math.max(MIN_H, Math.min(h, fh));
+    x=Math.max(0, Math.min(x, fw-w));
+    y=Math.max(0, Math.min(y, fh-h));
+    return {x:x,y:y,w:w,h:h};
+  }
+  function applyBox(b){
+    box.style.left=b.x+"px"; box.style.top=b.y+"px";
+    box.style.width=b.w+"px"; box.style.height=b.h+"px";
+  }
+  function saveBox(){
+    try{ localStorage.setItem("gy-rec-box", JSON.stringify({
+      x:box.offsetLeft, y:box.offsetTop, w:box.offsetWidth, h:box.offsetHeight
+    })); }catch(e){}
+  }
+  function initBox(){
+    var b=null;
+    try{ b=JSON.parse(localStorage.getItem("gy-rec-box")||"null"); }catch(e){}
+    var fw=field.clientWidth, fh=field.clientHeight;
+    if(!b || typeof b.w!=="number"){
+      var w=Math.min(Math.round(fw*0.86), 760);
+      var h=Math.round(fh*0.44);
+      b={x:Math.round((fw-w)/2), y:Math.round(fh*0.04), w:w, h:h};
+    }
+    applyBox(clampBox(b.x,b.y,b.w,b.h));
+    pads();
+  }
+  function makePointerDrag(el,onStart,onMove,onEnd){
+    var active=false, pid=null;
+    el.addEventListener("pointerdown",function(e){
+      active=true; pid=e.pointerId;
+      try{ el.setPointerCapture(pid); }catch(err){}
+      onStart(e); e.preventDefault();
+    });
+    el.addEventListener("pointermove",function(e){
+      if(!active||e.pointerId!==pid) return;
+      onMove(e);
+    });
+    function end(e){
+      if(!active) return;
+      active=false;
+      if(onEnd) onEnd(e);
+    }
+    el.addEventListener("pointerup",end);
+    el.addEventListener("pointercancel",end);
+  }
+  var drag={sx:0,sy:0,ox:0,oy:0};
+  makePointerDrag(handle,
+    function(e){ drag.sx=e.clientX; drag.sy=e.clientY; drag.ox=box.offsetLeft; drag.oy=box.offsetTop; },
+    function(e){
+      var b=clampBox(drag.ox+e.clientX-drag.sx, drag.oy+e.clientY-drag.sy, box.offsetWidth, box.offsetHeight);
+      box.style.left=b.x+"px"; box.style.top=b.y+"px";
+    },
+    saveBox);
+  var rs={sx:0,sy:0,ow:0,oh:0};
+  makePointerDrag(resizer,
+    function(e){ rs.sx=e.clientX; rs.sy=e.clientY; rs.ow=box.offsetWidth; rs.oh=box.offsetHeight; },
+    function(e){
+      var b=clampBox(box.offsetLeft, box.offsetTop, rs.ow+e.clientX-rs.sx, rs.oh+e.clientY-rs.sy);
+      applyBox(b); pads();
+    },
+    function(){ saveBox(); pads(); });
+
+  /* ---------- 稿件 ---------- */
+  function getScript(){
+    var t="";
+    try{ t=localStorage.getItem("gy-rec-script")||""; }catch(e){}
+    return t || DEFAULT_SCRIPT;
+  }
+  function render(){ inner.textContent=getScript(); resetScroll(); }
+
+  /* ---------- 捲動 ---------- */
+  function setOffset(v){
+    offset=Math.max(0,v);
+    inner.style.transform="translateY("+(-offset)+"px)";
+  }
+  function pads(){
+    inner.style.paddingTop=Math.round(stage.clientHeight*0.28)+"px";
+    inner.style.paddingBottom=stage.clientHeight+"px";
+  }
+  function resetScroll(){
+    stopScroll();
+    elapsed=0; $("boxTime").textContent="00:00";
+    pads(); setOffset(0);
+  }
+  function fmt(s){ var m=Math.floor(s/60); s=Math.floor(s%60); return (m<10?"0":"")+m+":"+(s<10?"0":"")+s; }
+  function step(ts){
+    if(!scrolling) return;
+    if(lastTs) setOffset(offset+Number(speedEl.value)*(ts-lastTs)/1000);
+    lastTs=ts;
+    if(offset>=inner.scrollHeight-stage.clientHeight*0.28){ stopScroll(); return; }
+    rafId=requestAnimationFrame(step);
+  }
+  function startScroll(){
+    if(scrolling) return;
+    scrolling=true; lastTs=0;
+    scrollBtn.textContent="⏸ 暫停";
+    startedAt=Date.now()-elapsed*1000;
+    timeTimer=setInterval(function(){
+      elapsed=(Date.now()-startedAt)/1000;
+      $("boxTime").textContent=fmt(elapsed);
+    },500);
+    rafId=requestAnimationFrame(step);
+    requestWake();
+  }
+  function stopScroll(){
+    scrolling=false;
+    cancelAnimationFrame(rafId);
+    clearInterval(timeTimer);
+    scrollBtn.textContent="▶ 捲動";
+    if(!recording) releaseWake();
+  }
+  function requestWake(){
+    try{
+      if(navigator.wakeLock && navigator.wakeLock.request){
+        navigator.wakeLock.request("screen").then(function(w){ wakeLock=w; }).catch(function(){});
+      }
+    }catch(e){}
+  }
+  function releaseWake(){
+    if(wakeLock){ try{ wakeLock.release(); }catch(e){} wakeLock=null; }
+  }
+  scrollBtn.onclick=function(){ scrolling?stopScroll():startScroll(); };
+  $("topBtn").onclick=resetScroll;
+  stage.addEventListener("click",function(){
+    if($("countdown").classList.contains("on")) return;
+    scrolling?stopScroll():startScroll();
+  });
+
+  /* ---------- 相機 ---------- */
+  $("startCamBtn").onclick=function(){
+    $("camErr").textContent="";
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      $("camErr").textContent="這個瀏覽器不支援開啟相機，請改用 Safari（iPhone）或 Chrome（Android）直接開啟本頁，不要在 LINE 或 Facebook 裡面開。";
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:"user", width:{ideal:1920}, height:{ideal:1080} },
+      audio:true
+    }).then(function(s){
+      stream=s;
+      camera.srcObject=s;
+      $("camHint").classList.add("hidden");
+      recBtn.disabled=false;
+    }).catch(function(err){
+      $("camErr").textContent="無法開啟相機或麥克風：" + err.name + "\n若在 LINE／FB 內建瀏覽器開啟會失敗，請點右下角選單選「用 Safari 開啟」。\n若之前按過「不允許」，請到 iPhone 設定 → Safari → 相機／麥克風 改為「允許」。";
+    });
+  };
+  $("mirrorCam").onchange=function(){ camera.classList.toggle("no-mirror", !this.checked); };
+
+  /* ---------- 錄影 ---------- */
+  function pickMime(){
+    var list=[
+      "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+      "video/mp4",
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm"
+    ];
+    for(var i=0;i<list.length;i++){
+      if(window.MediaRecorder && MediaRecorder.isTypeSupported(list[i])) return list[i];
+    }
+    return "";
+  }
+  function startRecording(){
+    if(!stream) return;
+    chunks=[];
+    var mime=pickMime();
+    try{
+      recorder = mime ? new MediaRecorder(stream,{mimeType:mime}) : new MediaRecorder(stream);
+    }catch(e){
+      alert("這個瀏覽器不支援網頁錄影，請更新 iOS／Safari 到最新版，或改用 Chrome。");
+      return;
+    }
+    recorder.ondataavailable=function(ev){ if(ev.data&&ev.data.size) chunks.push(ev.data); };
+    recorder.onstop=showResult;
+    recorder.start(1000);
+    recording=true;
+    recStart=Date.now();
+    $("recBadge").classList.add("on");
+    $("stopFloat").classList.add("on");
+    bar.classList.add("hide");
+    recTimer=setInterval(function(){
+      $("recTime").textContent=fmt(Math.floor((Date.now()-recStart)/1000));
+    },500);
+    requestWake();
+  }
+  function stopRecording(){
+    if(recorder && recorder.state!=="inactive") recorder.stop();
+    recording=false;
+    clearInterval(recTimer);
+    $("recBadge").classList.remove("on");
+    $("stopFloat").classList.remove("on");
+    $("recTime").textContent="00:00";
+    bar.classList.remove("hide");
+    stopScroll();
+    releaseWake();
+  }
+  function showResult(){
+    var type=(recorder&&recorder.mimeType)||"video/mp4";
+    lastBlob=new Blob(chunks,{type:type});
+    lastExt=type.indexOf("mp4")>=0?"mp4":"webm";
+    if(lastUrl) URL.revokeObjectURL(lastUrl);
+    lastUrl=URL.createObjectURL(lastBlob);
+    $("playback").src=lastUrl;
+    $("result").classList.add("on");
+  }
+  function fileName(){
+    var d=new Date();
+    function p(n){ return (n<10?"0":"")+n; }
+    return "提詞錄影_"+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"_"+p(d.getHours())+p(d.getMinutes())+"."+lastExt;
+  }
+  $("saveBtn").onclick=function(){
+    if(!lastBlob) return;
+    var name=fileName();
+    var f=null;
+    try{ f=new File([lastBlob], name, {type:lastBlob.type}); }catch(e){}
+    if(f && navigator.canShare && navigator.canShare({files:[f]}) && navigator.share){
+      navigator.share({files:[f]}).catch(function(){});
+    }else{
+      var a=document.createElement("a");
+      a.href=lastUrl; a.download=name;
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+  };
+  $("discardBtn").onclick=function(){
+    $("result").classList.remove("on");
+    $("playback").pause();
+  };
+
+  function countdownStart(){
+    var n=3, cd=$("countdown");
+    cd.textContent=n; cd.classList.add("on");
+    bar.classList.add("hide");
+    var t=setInterval(function(){
+      n--;
+      if(n<=0){
+        clearInterval(t); cd.classList.remove("on");
+        startRecording(); resetScrollKeepBarHidden(); startScroll();
+      }else cd.textContent=n;
+    },1000);
+  }
+  function resetScrollKeepBarHidden(){
+    elapsed=0; $("boxTime").textContent="00:00";
+    pads(); setOffset(0);
+  }
+  recBtn.onclick=function(){
+    if(recording){ stopRecording(); }
+    else{ resetScroll(); countdownStart(); }
+  };
+  $("stopFloat").onclick=stopRecording;
+
+  /* ---------- 稿件編輯 ---------- */
+  $("editBtn").onclick=function(){
+    $("scriptBox").value=getScript();
+    $("editor").classList.add("on");
+  };
+  $("closeEditor").onclick=function(){
+    try{ localStorage.setItem("gy-rec-script", $("scriptBox").value); }catch(e){}
+    $("editor").classList.remove("on");
+    render();
+  };
+  $("restoreBtn").onclick=function(){ $("scriptBox").value=""; };
+
+  /* ---------- 設定 ---------- */
+  function applyFont(){
+    inner.style.fontSize=fsizeEl.value+"px";
+    $("fsizeVal").textContent=fsizeEl.value;
+    try{ localStorage.setItem("gy-rec-font", fsizeEl.value); }catch(e){}
+    pads();
+  }
+  function applySpeed(){
+    $("speedVal").textContent=speedEl.value;
+    try{ localStorage.setItem("gy-rec-speed", speedEl.value); }catch(e){}
+  }
+  fsizeEl.oninput=applyFont;
+  speedEl.oninput=applySpeed;
+  try{
+    var f=localStorage.getItem("gy-rec-font"); if(f) fsizeEl.value=f;
+    var s=localStorage.getItem("gy-rec-speed"); if(s) speedEl.value=s;
+  }catch(e){}
+  applyFont(); applySpeed();
+
+  document.addEventListener("keydown",function(ev){
+    var tag=(ev.target.tagName||"").toLowerCase();
+    if(tag==="textarea"||tag==="input") return;
+    if(ev.code==="Space"){ ev.preventDefault(); scrolling?stopScroll():startScroll(); }
+    else if(ev.key==="ArrowUp"){ ev.preventDefault(); speedEl.value=Math.min(180,Number(speedEl.value)+5); applySpeed(); }
+    else if(ev.key==="ArrowDown"){ ev.preventDefault(); speedEl.value=Math.max(10,Number(speedEl.value)-5); applySpeed(); }
+  });
+  window.addEventListener("resize",function(){
+    var b=clampBox(box.offsetLeft, box.offsetTop, box.offsetWidth, box.offsetHeight);
+    applyBox(b); pads();
+  });
+
+  initBox();
+  render();
+})();
+</script>
+</body>
+</html>
