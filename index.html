@@ -61,7 +61,7 @@ button{font-family:inherit}
 #handle .grip{letter-spacing:2px;color:var(--accent)}
 #handle:active{cursor:grabbing}
 #boxTime{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--fg)}
-#stage{position:relative;flex:1;min-height:0;overflow:hidden;cursor:pointer}
+#stage{position:relative;flex:1;min-height:0;overflow:hidden;cursor:pointer;touch-action:none}
 #inner{
   padding-left:16px;padding-right:16px;
   white-space:pre-wrap;line-height:1.6;font-weight:700;
@@ -272,7 +272,7 @@ a.btn{text-decoration:none;display:inline-block}
   <span class="ctrl">速度 <input type="range" id="speed" min="5" max="180" value="13"><span class="num" id="speedVal">13</span></span>
   <span class="ctrl">字級 <input type="range" id="fsize" min="14" max="90" value="18"><span class="num" id="fsizeVal">18</span></span>
   <label class="ctrl"><input type="checkbox" id="mirrorCam" checked>預覽鏡像</label>
-  <span id="hint">拖方塊上緣＝移動　拖右下角 ◢＝調大小　點文字＝捲動/暫停　按「● 錄影」倒數 3 秒自動開錄＋捲稿</span>
+  <span id="hint">拖方塊上緣＝移動　拖右下角 ◢＝調大小　點文字＝捲動/暫停　上下拖文字＝手動捲　按「● 錄影」倒數 3 秒自動開錄＋捲稿</span>
 </div>
 
 <div id="editor">
@@ -304,7 +304,7 @@ a.btn{text-decoration:none;display:inline-block}
 (function(){
   "use strict";
   /* 每次部署時要同步調高 APP_VERSION 與 version.txt 的數字 */
-  var APP_VERSION="9";
+  var APP_VERSION="10";
   var $ = function(id){ return document.getElementById(id); };
   var field=$("field"), box=$("box"), handle=$("handle"), resizer=$("resizer");
   var stage=$("stage"), inner=$("inner"), bar=$("bar"), camera=$("camera");
@@ -330,14 +330,18 @@ a.btn{text-decoration:none;display:inline-block}
     box.style.left=b.x+"px"; box.style.top=b.y+"px";
     box.style.width=b.w+"px"; box.style.height=b.h+"px";
   }
+  /* 直放、橫放各自記一組方框位置，轉向時載入對應的那組並拉回畫面內 */
+  function slotKey(){
+    return field.clientWidth>field.clientHeight ? "gy-rec-box-l" : "gy-rec-box-p";
+  }
   function saveBox(){
-    try{ localStorage.setItem("gy-rec-box", JSON.stringify({
+    try{ localStorage.setItem(slotKey(), JSON.stringify({
       x:box.offsetLeft, y:box.offsetTop, w:box.offsetWidth, h:box.offsetHeight
     })); }catch(e){}
   }
-  function initBox(){
+  function placeBox(){
     var b=null;
-    try{ b=JSON.parse(localStorage.getItem("gy-rec-box")||"null"); }catch(e){}
+    try{ b=JSON.parse(localStorage.getItem(slotKey())||"null"); }catch(e){}
     var fw=field.clientWidth, fh=field.clientHeight;
     if(!b || typeof b.w!=="number"){
       var w=Math.min(Math.round(fw*0.86), 760);
@@ -444,10 +448,33 @@ a.btn{text-decoration:none;display:inline-block}
   }
   scrollBtn.onclick=function(){ scrolling?stopScroll():startScroll(); };
   $("topBtn").onclick=resetScroll;
-  stage.addEventListener("click",function(){
+
+  /* 文字區：輕點＝開始/暫停自動捲動；上下拖＝手動捲稿 */
+  var tdrag={pid:null, y0:0, off0:0, moved:false, was:false};
+  stage.addEventListener("pointerdown",function(e){
     if($("countdown").classList.contains("on")) return;
-    scrolling?stopScroll():startScroll();
+    tdrag.pid=e.pointerId; tdrag.y0=e.clientY; tdrag.off0=offset;
+    tdrag.moved=false; tdrag.was=scrolling;
+    if(scrolling) stopScroll();
+    try{ stage.setPointerCapture(e.pointerId); }catch(err){}
   });
+  stage.addEventListener("pointermove",function(e){
+    if(tdrag.pid===null || e.pointerId!==tdrag.pid) return;
+    var dy=e.clientY-tdrag.y0;
+    if(!tdrag.moved && Math.abs(dy)>8) tdrag.moved=true;
+    if(tdrag.moved){
+      var max=Math.max(0, inner.scrollHeight - stage.clientHeight*0.28);
+      setOffset(Math.min(max, tdrag.off0 - dy));
+    }
+  });
+  function tdragEnd(e){
+    if(tdrag.pid===null || e.pointerId!==tdrag.pid) return;
+    var moved=tdrag.moved, was=tdrag.was;
+    tdrag.pid=null;
+    if(!moved && !was) startScroll(); /* 輕點：沒在捲→開始；在捲→已於按下時暫停 */
+  }
+  stage.addEventListener("pointerup",tdragEnd);
+  stage.addEventListener("pointercancel",tdragEnd);
 
   /* ---------- 相機 ---------- */
   $("startCamBtn").onclick=function(){
@@ -712,14 +739,17 @@ a.btn{text-decoration:none;display:inline-block}
     try{ localStorage.setItem("gy-rec-flip", manualFlip?"1":""); }catch(e){}
     updateBarSide();
   };
-  window.addEventListener("resize",function(){
+  function relayout(){
     updateBarSide();
-    var b=clampBox(box.offsetLeft, box.offsetTop, box.offsetWidth, box.offsetHeight);
-    applyBox(b); pads();
-  });
+    placeBox();
+  }
+  window.addEventListener("resize",relayout);
   window.addEventListener("orientationchange",function(){
-    setTimeout(updateBarSide,300);
+    setTimeout(relayout,350);
   });
+  if(window.visualViewport){
+    window.visualViewport.addEventListener("resize",relayout);
+  }
 
   /* 自動更新：加入主畫面的 App 會快取舊版頁面，
      開啟時向伺服器核對 version.txt，有新版就重新載入（錄影或捲動中不打擾） */
@@ -741,7 +771,7 @@ a.btn{text-decoration:none;display:inline-block}
   checkUpdate();
 
   updateBarSide();
-  initBox();
+  placeBox();
   render();
 })();
 </script>
