@@ -304,7 +304,7 @@ a.btn{text-decoration:none;display:inline-block}
 (function(){
   "use strict";
   /* 每次部署時要同步調高 APP_VERSION 與 version.txt 的數字 */
-  var APP_VERSION="10";
+  var APP_VERSION="11";
   var $ = function(id){ return document.getElementById(id); };
   var field=$("field"), box=$("box"), handle=$("handle"), resizer=$("resizer");
   var stage=$("stage"), inner=$("inner"), bar=$("bar"), camera=$("camera");
@@ -342,10 +342,15 @@ a.btn{text-decoration:none;display:inline-block}
   function placeBox(){
     var b=null;
     try{ b=JSON.parse(localStorage.getItem(slotKey())||"null"); }catch(e){}
+    if(!b || typeof b.w!=="number"){
+      /* 新欄位沒資料時，讀回改版前存的舊設定 */
+      try{ b=JSON.parse(localStorage.getItem("gy-rec-box")||"null"); }catch(e){ b=null; }
+    }
     var fw=field.clientWidth, fh=field.clientHeight;
     if(!b || typeof b.w!=="number"){
-      var w=Math.min(Math.round(fw*0.86), 760);
-      var h=Math.round(fh*0.44);
+      var landscape=fw>fh;
+      var w=landscape ? Math.min(Math.round(fw*0.52), 640) : Math.min(Math.round(fw*0.86), 760);
+      var h=landscape ? Math.round(fh*0.5) : Math.round(fh*0.44);
       b={x:Math.round((fw-w)/2), y:Math.round(fh*0.04), w:w, h:h};
     }
     applyBox(clampBox(b.x,b.y,b.w,b.h));
