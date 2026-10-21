@@ -303,6 +303,8 @@ a.btn{text-decoration:none;display:inline-block}
 <script>
 (function(){
   "use strict";
+  /* 每次部署時要同步調高 APP_VERSION 與 version.txt 的數字 */
+  var APP_VERSION="9";
   var $ = function(id){ return document.getElementById(id); };
   var field=$("field"), box=$("box"), handle=$("handle"), resizer=$("resizer");
   var stage=$("stage"), inner=$("inner"), bar=$("bar"), camera=$("camera");
@@ -718,6 +720,25 @@ a.btn{text-decoration:none;display:inline-block}
   window.addEventListener("orientationchange",function(){
     setTimeout(updateBarSide,300);
   });
+
+  /* 自動更新：加入主畫面的 App 會快取舊版頁面，
+     開啟時向伺服器核對 version.txt，有新版就重新載入（錄影或捲動中不打擾） */
+  function checkUpdate(){
+    if(recording || scrolling) return;
+    fetch("version.txt?ts="+Date.now(), {cache:"no-store"})
+      .then(function(r){ return r.ok ? r.text() : ""; })
+      .then(function(v){
+        v=(v||"").trim();
+        if(v && v!==APP_VERSION){
+          location.replace(location.pathname+"?v="+encodeURIComponent(v));
+        }
+      })
+      .catch(function(){});
+  }
+  document.addEventListener("visibilitychange", function(){
+    if(!document.hidden) checkUpdate();
+  });
+  checkUpdate();
 
   updateBarSide();
   initBox();
