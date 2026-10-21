@@ -33,7 +33,7 @@ body{
 button{font-family:inherit}
 
 /* ===== 相機畫面 ===== */
-#field{position:relative;flex:1;min-height:0;overflow:hidden;background:#000}
+#field{position:fixed;inset:0;overflow:hidden;background:#000}
 #camera{
   position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
   transform:scaleX(-1);
@@ -128,23 +128,24 @@ button{font-family:inherit}
 
 /* ===== 底部控制列 ===== */
 #bar{
-  flex:none;display:flex;flex-wrap:wrap;gap:9px;align-items:center;
+  position:fixed;left:0;right:0;bottom:0;z-index:10;
+  display:flex;flex-wrap:wrap;gap:9px;align-items:center;
   padding-top:8px;
   padding-bottom:calc(8px + env(safe-area-inset-bottom, 0px));
   padding-left:max(14px, env(safe-area-inset-left, 0px));
   padding-right:max(14px, env(safe-area-inset-right, 0px));
   background:var(--panel);border-top:1px solid var(--line);
-  transition:margin .35s, opacity .35s;
+  transition:transform .35s, opacity .35s;
 }
-#bar.hide{margin-bottom:-160px;opacity:0;pointer-events:none}
+#bar.hide{transform:translateY(112%);opacity:0;pointer-events:none}
 
-/* 手機橫放：控制列直排移到側邊（自動避開鏡頭那一側），讓提詞方塊能貼齊鏡頭 */
+/* 手機橫放：控制列直排浮在側邊（自動避開鏡頭那一側）。
+   工具列是浮在畫面上層的，出現或隱藏都不改變畫面大小，方塊位置不會跑掉 */
 @media (orientation: landscape) and (max-height: 540px){
-  body{flex-direction:row-reverse} /* 預設工具列在左 */
-  body.bar-right{flex-direction:row} /* 鏡頭在左時，工具列改到右邊 */
   #bar{
+    top:0;bottom:0;left:0;right:auto;width:186px;
     flex-direction:column;flex-wrap:nowrap;align-items:stretch;
-    width:186px;overflow-y:auto;
+    overflow-y:auto;
     border-top:0;border-right:1px solid var(--line);
     padding-top:calc(10px + env(safe-area-inset-top, 0px));
     padding-bottom:calc(10px + env(safe-area-inset-bottom, 0px));
@@ -152,12 +153,13 @@ button{font-family:inherit}
     padding-right:10px;
   }
   body.bar-right #bar{
+    left:auto;right:0;
     border-right:0;border-left:1px solid var(--line);
     padding-left:10px;
     padding-right:max(10px, env(safe-area-inset-right, 0px));
   }
-  #bar.hide{margin-bottom:0;margin-left:-260px}
-  body.bar-right #bar.hide{margin-left:0;margin-right:-260px}
+  #bar.hide{transform:translateX(-112%)}
+  body.bar-right #bar.hide{transform:translateX(112%)}
   #bar .btn{width:100%}
   #bar .ctrl{justify-content:space-between}
   #bar .ctrl input[type=range]{flex:1;width:auto;min-width:0}
@@ -495,6 +497,7 @@ a.btn{text-decoration:none;display:inline-block}
     recorder.start(1000);
     recording=true;
     recStart=Date.now();
+    recBtn.textContent="■ 停止";
     $("recBadge").classList.add("on");
     $("stopFloat").classList.add("on");
     bar.classList.add("hide");
@@ -507,6 +510,7 @@ a.btn{text-decoration:none;display:inline-block}
     if(recorder && recorder.state!=="inactive") recorder.stop();
     recording=false;
     clearInterval(recTimer);
+    recBtn.textContent="● 錄影";
     $("recBadge").classList.remove("on");
     $("stopFloat").classList.remove("on");
     $("recTime").textContent="00:00";
