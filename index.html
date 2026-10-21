@@ -13,6 +13,8 @@
 <style>
 /* 手機錄影提詞機：全螢幕相機畫面＋可拖曳提詞方塊＋錄影存檔 */
 :root{
+  --sal:env(safe-area-inset-left, 0px);
+  --sar:env(safe-area-inset-right, 0px);
   --bg:#0a0b0d;
   --fg:#f5f1e8;
   --fg-dim:#9aa3b2;
@@ -138,9 +140,10 @@ button{font-family:inherit}
 }
 #bar.hide{margin-bottom:-160px;opacity:0;pointer-events:none}
 
-/* 手機橫放：控制列移到最左邊直排，下緣與右緣空出來讓提詞方塊貼齊鏡頭 */
+/* 手機橫放：控制列直排移到側邊（自動避開鏡頭那一側），讓提詞方塊能貼齊鏡頭 */
 @media (orientation: landscape) and (max-height: 540px){
-  body{flex-direction:row-reverse}
+  body{flex-direction:row-reverse} /* 預設工具列在左 */
+  body.bar-right{flex-direction:row} /* 鏡頭在左時，工具列改到右邊 */
   #bar{
     flex-direction:column;flex-wrap:nowrap;align-items:stretch;
     width:186px;overflow-y:auto;
@@ -150,7 +153,13 @@ button{font-family:inherit}
     padding-left:max(10px, env(safe-area-inset-left, 0px));
     padding-right:10px;
   }
+  body.bar-right #bar{
+    border-right:0;border-left:1px solid var(--line);
+    padding-left:10px;
+    padding-right:max(10px, env(safe-area-inset-right, 0px));
+  }
   #bar.hide{margin-bottom:0;margin-left:-260px}
+  body.bar-right #bar.hide{margin-left:0;margin-right:-260px}
   #bar .btn{width:100%}
   #bar .ctrl{justify-content:space-between}
   #bar .ctrl input[type=range]{flex:1;width:auto;min-width:0}
@@ -677,11 +686,23 @@ a.btn{text-decoration:none;display:inline-block}
     else if(ev.key==="ArrowUp"){ ev.preventDefault(); speedEl.value=Math.min(180,Number(speedEl.value)+5); applySpeed(); }
     else if(ev.key==="ArrowDown"){ ev.preventDefault(); speedEl.value=Math.max(5,Number(speedEl.value)-5); applySpeed(); }
   });
+  /* 鏡頭（瀏海）在哪一側，工具列就移到對面 */
+  function updateBarSide(){
+    var cs=getComputedStyle(document.documentElement);
+    var sal=parseFloat(cs.getPropertyValue("--sal"))||0;
+    var sar=parseFloat(cs.getPropertyValue("--sar"))||0;
+    document.body.classList.toggle("bar-right", sal>sar);
+  }
   window.addEventListener("resize",function(){
+    updateBarSide();
     var b=clampBox(box.offsetLeft, box.offsetTop, box.offsetWidth, box.offsetHeight);
     applyBox(b); pads();
   });
+  window.addEventListener("orientationchange",function(){
+    setTimeout(updateBarSide,300);
+  });
 
+  updateBarSide();
   initBox();
   render();
 })();
