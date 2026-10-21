@@ -13,8 +13,6 @@
 <style>
 /* 手機錄影提詞機：全螢幕相機畫面＋可拖曳提詞方塊＋錄影存檔 */
 :root{
-  --sal:env(safe-area-inset-left, 0px);
-  --sar:env(safe-area-inset-right, 0px);
   --bg:#0a0b0d;
   --fg:#f5f1e8;
   --fg-dim:#9aa3b2;
@@ -268,6 +266,7 @@ a.btn{text-decoration:none;display:inline-block}
   <button class="btn" id="scrollBtn">▶ 捲動</button>
   <button class="btn" id="topBtn">⟲ 回頂</button>
   <button class="btn" id="editBtn">✏️ 稿件</button>
+  <button class="btn" id="sideBtn">⇄ 換邊</button>
   <span class="ctrl">速度 <input type="range" id="speed" min="5" max="180" value="13"><span class="num" id="speedVal">13</span></span>
   <span class="ctrl">字級 <input type="range" id="fsize" min="14" max="90" value="18"><span class="num" id="fsizeVal">18</span></span>
   <label class="ctrl"><input type="checkbox" id="mirrorCam" checked>預覽鏡像</label>
@@ -686,13 +685,27 @@ a.btn{text-decoration:none;display:inline-block}
     else if(ev.key==="ArrowUp"){ ev.preventDefault(); speedEl.value=Math.min(180,Number(speedEl.value)+5); applySpeed(); }
     else if(ev.key==="ArrowDown"){ ev.preventDefault(); speedEl.value=Math.max(5,Number(speedEl.value)-5); applySpeed(); }
   });
-  /* 鏡頭（瀏海）在哪一側，工具列就移到對面 */
+  /* 鏡頭（瀏海）在哪一側，工具列就移到對面。
+     iPhone 橫放時左右安全邊距是對稱的，分不出瀏海側，
+     所以改用螢幕旋轉角度：90 度＝瀏海在左、270 度＝瀏海在右，
+     再搭配「⇄ 換邊」手動切換（記住使用者的選擇）。 */
+  var manualFlip=false;
+  try{ manualFlip = localStorage.getItem("gy-rec-flip")==="1"; }catch(e){}
   function updateBarSide(){
-    var cs=getComputedStyle(document.documentElement);
-    var sal=parseFloat(cs.getPropertyValue("--sal"))||0;
-    var sar=parseFloat(cs.getPropertyValue("--sar"))||0;
-    document.body.classList.toggle("bar-right", sal>sar);
+    var ang=null;
+    try{
+      if(screen.orientation && typeof screen.orientation.angle==="number") ang=screen.orientation.angle;
+      else if(typeof window.orientation==="number") ang=window.orientation<0 ? 360+window.orientation : window.orientation;
+    }catch(e){}
+    var barRight=(ang===90); // 瀏海在左 → 工具列去右邊
+    if(manualFlip) barRight=!barRight;
+    document.body.classList.toggle("bar-right", barRight);
   }
+  $("sideBtn").onclick=function(){
+    manualFlip=!manualFlip;
+    try{ localStorage.setItem("gy-rec-flip", manualFlip?"1":""); }catch(e){}
+    updateBarSide();
+  };
   window.addEventListener("resize",function(){
     updateBarSide();
     var b=clampBox(box.offsetLeft, box.offsetTop, box.offsetWidth, box.offsetHeight);
