@@ -13,6 +13,7 @@
 <style>
 /* 手機錄影提詞機：全螢幕相機畫面＋可拖曳提詞方塊＋錄影存檔 */
 :root{
+  --sat:env(safe-area-inset-top, 0px);
   --bg:#0a0b0d;
   --fg:#f5f1e8;
   --fg-dim:#9aa3b2;
@@ -304,7 +305,7 @@ a.btn{text-decoration:none;display:inline-block}
 (function(){
   "use strict";
   /* 每次部署時要同步調高 APP_VERSION 與 version.txt 的數字 */
-  var APP_VERSION="11";
+  var APP_VERSION="12";
   var $ = function(id){ return document.getElementById(id); };
   var field=$("field"), box=$("box"), handle=$("handle"), resizer=$("resizer");
   var stage=$("stage"), inner=$("inner"), bar=$("bar"), camera=$("camera");
@@ -318,12 +319,16 @@ a.btn{text-decoration:none;display:inline-block}
   var DEFAULT_SCRIPT = "（還沒有稿子）\n\n請點下方「✏️ 稿件」，把要念的稿子貼進來。\n\n稿子只會存在這支手機的瀏覽器裡，不會上傳到任何地方。";
 
   /* ---------- 方塊拖曳與縮放 ---------- */
+  function safeTop(){
+    /* 瀏海／狀態列的高度：方塊不能推進這個區域，否則拖曳把手會按不到 */
+    return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sat"))||0;
+  }
   function clampBox(x,y,w,h){
-    var fw=field.clientWidth, fh=field.clientHeight;
+    var fw=field.clientWidth, fh=field.clientHeight, st=safeTop();
     w=Math.max(MIN_W, Math.min(w, fw));
-    h=Math.max(MIN_H, Math.min(h, fh));
+    h=Math.max(MIN_H, Math.min(h, fh-st));
     x=Math.max(0, Math.min(x, fw-w));
-    y=Math.max(0, Math.min(y, fh-h));
+    y=Math.max(st, Math.min(y, fh-h));
     return {x:x,y:y,w:w,h:h};
   }
   function applyBox(b){
