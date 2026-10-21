@@ -134,9 +134,28 @@ button{font-family:inherit}
   padding-left:max(14px, env(safe-area-inset-left, 0px));
   padding-right:max(14px, env(safe-area-inset-right, 0px));
   background:var(--panel);border-top:1px solid var(--line);
-  transition:margin-bottom .35s, opacity .35s;
+  transition:margin .35s, opacity .35s;
 }
 #bar.hide{margin-bottom:-160px;opacity:0;pointer-events:none}
+
+/* 手機橫放：控制列移到最左邊直排，下緣與右緣空出來讓提詞方塊貼齊鏡頭 */
+@media (orientation: landscape) and (max-height: 540px){
+  body{flex-direction:row-reverse}
+  #bar{
+    flex-direction:column;flex-wrap:nowrap;align-items:stretch;
+    width:186px;overflow-y:auto;
+    border-top:0;border-right:1px solid var(--line);
+    padding-top:calc(10px + env(safe-area-inset-top, 0px));
+    padding-bottom:calc(10px + env(safe-area-inset-bottom, 0px));
+    padding-left:max(10px, env(safe-area-inset-left, 0px));
+    padding-right:10px;
+  }
+  #bar.hide{margin-bottom:0;margin-left:-260px}
+  #bar .btn{width:100%}
+  #bar .ctrl{justify-content:space-between}
+  #bar .ctrl input[type=range]{flex:1;width:auto;min-width:0}
+  #hint{display:none}
+}
 .btn{
   border:1px solid var(--line);background:#20242c;color:var(--fg);
   padding:9px 14px;border-radius:10px;font-size:15px;cursor:pointer;
