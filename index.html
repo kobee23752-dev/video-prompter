@@ -218,8 +218,8 @@ a.btn{text-decoration:none;display:inline-block}
   <button class="btn" id="scrollBtn">▶ 捲動</button>
   <button class="btn" id="topBtn">⟲ 回頂</button>
   <button class="btn" id="editBtn">✏️ 稿件</button>
-  <span class="ctrl">速度 <input type="range" id="speed" min="10" max="180" value="48"><span class="num" id="speedVal">48</span></span>
-  <span class="ctrl">字級 <input type="range" id="fsize" min="18" max="90" value="34"><span class="num" id="fsizeVal">34</span></span>
+  <span class="ctrl">速度 <input type="range" id="speed" min="5" max="180" value="13"><span class="num" id="speedVal">13</span></span>
+  <span class="ctrl">字級 <input type="range" id="fsize" min="14" max="90" value="18"><span class="num" id="fsizeVal">18</span></span>
   <label class="ctrl"><input type="checkbox" id="mirrorCam" checked>預覽鏡像</label>
   <span id="hint">拖方塊上緣＝移動　拖右下角 ◢＝調大小　點文字＝捲動/暫停　按「● 錄影」倒數 3 秒自動開錄＋捲稿</span>
 </div>
@@ -553,7 +553,7 @@ a.btn{text-decoration:none;display:inline-block}
     if(tag==="textarea"||tag==="input") return;
     if(ev.code==="Space"){ ev.preventDefault(); scrolling?stopScroll():startScroll(); }
     else if(ev.key==="ArrowUp"){ ev.preventDefault(); speedEl.value=Math.min(180,Number(speedEl.value)+5); applySpeed(); }
-    else if(ev.key==="ArrowDown"){ ev.preventDefault(); speedEl.value=Math.max(10,Number(speedEl.value)-5); applySpeed(); }
+    else if(ev.key==="ArrowDown"){ ev.preventDefault(); speedEl.value=Math.max(5,Number(speedEl.value)-5); applySpeed(); }
   });
   window.addEventListener("resize",function(){
     var b=clampBox(box.offsetLeft, box.offsetTop, box.offsetWidth, box.offsetHeight);
