@@ -296,6 +296,10 @@ a.btn{text-decoration:none;display:inline-block}
 <div id="result">
   <div id="resultPanel">
     <h2>錄影完成</h2>
+    <div id="blackWarn" hidden style="background:#4a1518;border:1px solid #ff4d4d;border-radius:10px;padding:10px 12px;color:#ffb3b3;font-size:14px;line-height:1.6">
+      ⚠️ 這段影片的畫面是<b>全黑</b>的（聲音正常）！這是 iPhone 相機對某個橫拿方向的已知問題。<br>
+      請按「捨棄」，把手機<b>轉 180 度、換另一邊橫拿</b>再錄一次。
+    </div>
     <video id="playback" controls playsinline></video>
     <div class="note">「儲存影片」會打開分享選單，選「儲存影片」就會存進手機相簿；若沒有分享選單則會直接下載到檔案 App。</div>
     <div class="row">
@@ -309,7 +313,7 @@ a.btn{text-decoration:none;display:inline-block}
 (function(){
   "use strict";
   /* 每次部署時要同步調高 APP_VERSION 與 version.txt 的數字 */
-  var APP_VERSION="14";
+  var APP_VERSION="15";
   var $ = function(id){ return document.getElementById(id); };
   var field=$("field"), box=$("box"), handle=$("handle"), resizer=$("resizer");
   var stage=$("stage"), inner=$("inner"), bar=$("bar"), camera=$("camera");
@@ -557,20 +561,54 @@ a.btn{text-decoration:none;display:inline-block}
     }
     return "";
   }
+  /* 錄影管線：iOS 直接錄相機軌時，其中一個橫拿方向（畫面需旋轉180度）
+     編碼器會輸出全黑。改成把預覽畫面每一格畫到畫布上、錄畫布的影像軌
+     （預覽兩個方向都正常，所以錄出來也正常），聲音軌照用相機的。 */
+  var recCanvas=null, recCtx=null, recStream=null, drawRaf=0;
   function startRecording(){
     if(!stream) return;
     chunks=[];
     var mime=pickMime();
+    var useCanvas = !!(window.HTMLCanvasElement && HTMLCanvasElement.prototype.captureStream && camera.videoWidth);
+    recStream=stream;
+    if(useCanvas){
+      try{
+        var vw=camera.videoWidth, vh=camera.videoHeight;
+        var scale=Math.min(1, 1280/Math.max(vw,vh));
+        recCanvas=document.createElement("canvas");
+        recCanvas.width=Math.max(2, Math.round(vw*scale/2)*2);
+        recCanvas.height=Math.max(2, Math.round(vh*scale/2)*2);
+        recCtx=recCanvas.getContext("2d");
+        recCtx.drawImage(camera,0,0,recCanvas.width,recCanvas.height);
+        var cs=recCanvas.captureStream(30);
+        var ms=new MediaStream();
+        cs.getVideoTracks().forEach(function(t){ ms.addTrack(t); });
+        stream.getAudioTracks().forEach(function(t){ ms.addTrack(t); });
+        recStream=ms;
+      }catch(e){ recCanvas=null; recCtx=null; recStream=stream; }
+    }
     try{
-      recorder = mime ? new MediaRecorder(stream,{mimeType:mime}) : new MediaRecorder(stream);
+      var opts={videoBitsPerSecond:4000000};
+      if(mime) opts.mimeType=mime;
+      recorder=new MediaRecorder(recStream, opts);
     }catch(e){
-      alert("這個瀏覽器不支援網頁錄影，請更新 iOS／Safari 到最新版，或改用 Chrome。");
-      return;
+      try{ recorder=new MediaRecorder(recStream); }
+      catch(e2){
+        alert("這個瀏覽器不支援網頁錄影，請更新 iOS／Safari 到最新版，或改用 Chrome。");
+        return;
+      }
     }
     recorder.ondataavailable=function(ev){ if(ev.data&&ev.data.size) chunks.push(ev.data); };
     recorder.onstop=showResult;
     recorder.start(1000);
     recording=true;
+    if(recCanvas){
+      (function draw(){
+        if(!recording) return;
+        try{ recCtx.drawImage(camera,0,0,recCanvas.width,recCanvas.height); }catch(e){}
+        drawRaf=requestAnimationFrame(draw);
+      })();
+    }
     recStart=Date.now();
     recBtn.textContent="■ 停止";
     $("recBadge").classList.add("on");
@@ -580,10 +618,29 @@ a.btn{text-decoration:none;display:inline-block}
       $("recTime").textContent=fmt(Math.floor((Date.now()-recStart)/1000));
     },500);
     requestWake();
+    /* 開錄 2.5 秒就先檢查錄出來的內容：是黑的立刻停，不讓人講完整段才發現 */
+    setTimeout(function(){
+      if(!recording || !chunks.length) return;
+      var probe;
+      try{ probe=new Blob(chunks.slice(0), {type:(recorder&&recorder.mimeType)||"video/mp4"}); }catch(e){ return; }
+      var u=URL.createObjectURL(probe);
+      analyzeBlobBlack(u, function(isBlack){
+        URL.revokeObjectURL(u);
+        if(isBlack && recording){
+          stopRecording();
+          alert("偵測到錄出來的畫面是全黑的，已自動停止錄影。\n請把手機轉 180 度（換另一邊橫拿），再按一次「● 錄影」。");
+        }
+      });
+    },2500);
   }
   function stopRecording(){
     if(recorder && recorder.state!=="inactive") recorder.stop();
     recording=false;
+    cancelAnimationFrame(drawRaf);
+    if(recStream && recStream!==stream){
+      recStream.getVideoTracks().forEach(function(t){ try{ t.stop(); }catch(e){} });
+    }
+    recCanvas=null; recCtx=null;
     clearInterval(recTimer);
     recBtn.textContent="● 錄影";
     $("recBadge").classList.remove("on");
@@ -593,6 +650,37 @@ a.btn{text-decoration:none;display:inline-block}
     stopScroll();
     releaseWake();
   }
+  /* 目前的螢幕旋轉角度（0/90/180/270） */
+  function curAngle(){
+    try{
+      if(screen.orientation && typeof screen.orientation.angle==="number") return screen.orientation.angle;
+      if(typeof window.orientation==="number") return window.orientation<0?360+window.orientation:window.orientation;
+    }catch(e){}
+    return 0;
+  }
+  /* 讀錄好的影片抽一格檢查是否全黑（iOS 某個橫拿方向會錄出黑片） */
+  function analyzeBlobBlack(url, cb){
+    var v=document.createElement("video");
+    v.muted=true; v.playsInline=true; v.preload="auto";
+    var done=false;
+    function finish(isBlack){ if(done) return; done=true; cb(isBlack); }
+    v.addEventListener("loadeddata",function(){
+      try{ v.currentTime=Math.min(0.8,(v.duration||1)/2); }catch(e){ finish(false); }
+    });
+    v.addEventListener("seeked",function(){
+      try{
+        var c=document.createElement("canvas"); c.width=32; c.height=18;
+        var ctx=c.getContext("2d");
+        ctx.drawImage(v,0,0,32,18);
+        var d=ctx.getImageData(0,0,32,18).data, sum=0, n=d.length/4;
+        for(var i=0;i<d.length;i+=4){ sum+=d[i]+d[i+1]+d[i+2]; }
+        finish(sum/n<6);
+      }catch(e){ finish(false); }
+    });
+    v.addEventListener("error",function(){ finish(false); });
+    setTimeout(function(){ finish(false); },4000);
+    v.src=url;
+  }
   function showResult(){
     var type=(recorder&&recorder.mimeType)||"video/mp4";
     lastBlob=new Blob(chunks,{type:type});
@@ -600,7 +688,20 @@ a.btn{text-decoration:none;display:inline-block}
     if(lastUrl) URL.revokeObjectURL(lastUrl);
     lastUrl=URL.createObjectURL(lastBlob);
     $("playback").src=lastUrl;
+    $("blackWarn").hidden=true;
     $("result").classList.add("on");
+    var ang=curAngle();
+    analyzeBlobBlack(lastUrl, function(isBlack){
+      if(isBlack){
+        $("blackWarn").hidden=false;
+        try{ localStorage.setItem("gy-rec-bad-angle", String(ang)); }catch(e){}
+      }else{
+        /* 這個方向錄起來正常：若之前記成壞方向，解除 */
+        try{
+          if(localStorage.getItem("gy-rec-bad-angle")===String(ang)) localStorage.removeItem("gy-rec-bad-angle");
+        }catch(e){}
+      }
+    });
   }
   function fileName(){
     var d=new Date();
@@ -662,7 +763,15 @@ a.btn{text-decoration:none;display:inline-block}
   }
   recBtn.onclick=function(){
     if(recording){ stopRecording(); }
-    else{ resetScroll(); countdownStart(); }
+    else{
+      /* 這支手機之前在這個方向錄出過黑片：先提醒換邊拿 */
+      var bad=null;
+      try{ bad=localStorage.getItem("gy-rec-bad-angle"); }catch(e){}
+      if(bad && Number(bad)===curAngle()){
+        alert("提醒：上次用這個橫拿方向錄出來是黑畫面。\n建議把手機轉 180 度、換另一邊橫拿再錄。\n（如果堅持用這個方向，錄完請先確認預覽有畫面再儲存）");
+      }
+      resetScroll(); countdownStart();
+    }
   };
   $("stopFloat").onclick=stopRecording;
 
