@@ -309,7 +309,7 @@ a.btn{text-decoration:none;display:inline-block}
 (function(){
   "use strict";
   /* 每次部署時要同步調高 APP_VERSION 與 version.txt 的數字 */
-  var APP_VERSION="13";
+  var APP_VERSION="14";
   var $ = function(id){ return document.getElementById(id); };
   var field=$("field"), box=$("box"), handle=$("handle"), resizer=$("resizer");
   var stage=$("stage"), inner=$("inner"), bar=$("bar"), camera=$("camera");
@@ -495,13 +495,8 @@ a.btn{text-decoration:none;display:inline-block}
   var inApp=/Line\/|FBAN|FBAV|FB_IAB|Instagram|MicroMessenger/i.test(navigator.userAgent||"");
   if(inApp) $("inAppWarn").hidden=false;
 
-  $("startCamBtn").onclick=function(){
-    $("camErr").textContent="";
-    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      $("camErr").textContent="這個瀏覽器不支援開啟相機，請改用 Safari（iPhone）或 Chrome（Android）直接開啟本頁，不要在 LINE 或 Facebook 裡面開。";
-      return;
-    }
-    navigator.mediaDevices.getUserMedia({
+  function openStream(){
+    return navigator.mediaDevices.getUserMedia({
       video:{ facingMode:"user", width:{ideal:1920}, height:{ideal:1080} },
       audio:true
     }).then(function(s){
@@ -509,10 +504,43 @@ a.btn{text-decoration:none;display:inline-block}
       camera.srcObject=s;
       $("camHint").classList.add("hidden");
       recBtn.disabled=false;
-    }).catch(function(err){
+      return s;
+    });
+  }
+  $("startCamBtn").onclick=function(){
+    $("camErr").textContent="";
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      $("camErr").textContent="這個瀏覽器不支援開啟相機，請改用 Safari（iPhone）或 Chrome（Android）直接開啟本頁，不要在 LINE 或 Facebook 裡面開。";
+      return;
+    }
+    openStream().catch(function(err){
       $("camErr").textContent="無法開啟相機或麥克風：" + err.name + "\n若在 LINE／FB 內建瀏覽器開啟會失敗，請點右下角選單選「用 Safari 開啟」。\n若之前按過「不允許」，請到 iPhone 設定 → Safari → 相機／麥克風 改為「允許」。";
     });
   };
+  /* iOS 的相機如果是直式時開的，轉成橫式後錄影會錄出全黑，
+     所以轉向後（非錄影中）自動關掉相機重開一次，讓相機用目前的方向重新啟動 */
+  var restartTimer=null;
+  function restartStream(){
+    if(!stream || recording) return;
+    var old=stream;
+    stream=null; recBtn.disabled=true;
+    old.getTracks().forEach(function(t){ try{ t.stop(); }catch(e){} });
+    openStream().catch(function(err){
+      $("camHint").classList.remove("hidden");
+      $("camErr").textContent="相機重新啟動失敗（" + err.name + "），請再按一次「開啟相機」。";
+    });
+  }
+  function scheduleRestart(){
+    if(!stream || recording) return;
+    clearTimeout(restartTimer);
+    restartTimer=setTimeout(restartStream, 600);
+  }
+  /* 回到 App 時若相機軌已失效也重開 */
+  document.addEventListener("visibilitychange", function(){
+    if(document.hidden || !stream || recording) return;
+    var vt=stream.getVideoTracks()[0];
+    if(!vt || vt.readyState==="ended" || vt.muted) restartStream();
+  });
   $("mirrorCam").onchange=function(){ camera.classList.toggle("no-mirror", !this.checked); };
 
   /* ---------- 錄影 ---------- */
@@ -597,6 +625,19 @@ a.btn{text-decoration:none;display:inline-block}
     $("playback").pause();
   };
 
+  /* 錄影前抽一格畫面檢查：相機若正在輸出全黑，擋下來並自動重開相機 */
+  function streamLooksBlack(){
+    try{
+      if(!camera.videoWidth) return false;
+      var c=document.createElement("canvas");
+      c.width=32; c.height=18;
+      var ctx=c.getContext("2d");
+      ctx.drawImage(camera,0,0,32,18);
+      var d=ctx.getImageData(0,0,32,18).data, sum=0, n=d.length/4;
+      for(var i=0;i<d.length;i+=4){ sum+=d[i]+d[i+1]+d[i+2]; }
+      return (sum/n)<6;
+    }catch(e){ return false; }
+  }
   function countdownStart(){
     var n=3, cd=$("countdown");
     cd.textContent=n; cd.classList.add("on");
@@ -605,6 +646,12 @@ a.btn{text-decoration:none;display:inline-block}
       n--;
       if(n<=0){
         clearInterval(t); cd.classList.remove("on");
+        if(streamLooksBlack()){
+          bar.classList.remove("hide");
+          alert("相機畫面目前是全黑的（通常發生在轉向之後），已自動重新啟動相機。\n請等預覽出現畫面，再按一次「● 錄影」。");
+          restartStream();
+          return;
+        }
         startRecording(); resetScrollKeepBarHidden(); startScroll();
       }else cd.textContent=n;
     },1000);
@@ -757,9 +804,13 @@ a.btn{text-decoration:none;display:inline-block}
     try{ localStorage.setItem("gy-rec-flip", manualFlip?"1":""); }catch(e){}
     updateBarSide();
   };
+  var lastLand=null;
   function relayout(){
     updateBarSide();
     placeBox();
+    var land=field.clientWidth>field.clientHeight;
+    if(lastLand!==null && land!==lastLand) scheduleRestart(); /* 轉向了：重開相機 */
+    lastLand=land;
   }
   window.addEventListener("resize",relayout);
   window.addEventListener("orientationchange",function(){
