@@ -259,6 +259,10 @@ a.btn{text-decoration:none;display:inline-block}
   <div id="camHint">
     <div class="t">國教盟錄影提詞機</div>
     <div>按下按鈕開啟相機與麥克風，瀏覽器詢問時請選「允許」。<br>建議手機橫放拍攝。</div>
+    <div id="inAppWarn" hidden style="color:#ffb84d;font-size:14px;max-width:30em;line-height:1.6">
+      ⚠️ 你現在是在 LINE／社群 App 的內建瀏覽器裡，錄影和儲存影片會失敗或變成黑畫面。<br>
+      請點畫面角落的「⋯」或分享選單，選「<b>用 Safari 開啟</b>」（Android 選「用 Chrome 開啟」）再使用。
+    </div>
     <button id="startCamBtn">開啟相機</button>
     <div id="camErr"></div>
   </div>
@@ -305,7 +309,7 @@ a.btn{text-decoration:none;display:inline-block}
 (function(){
   "use strict";
   /* 每次部署時要同步調高 APP_VERSION 與 version.txt 的數字 */
-  var APP_VERSION="12";
+  var APP_VERSION="13";
   var $ = function(id){ return document.getElementById(id); };
   var field=$("field"), box=$("box"), handle=$("handle"), resizer=$("resizer");
   var stage=$("stage"), inner=$("inner"), bar=$("bar"), camera=$("camera");
@@ -487,6 +491,10 @@ a.btn{text-decoration:none;display:inline-block}
   stage.addEventListener("pointercancel",tdragEnd);
 
   /* ---------- 相機 ---------- */
+  /* LINE、FB 等 App 的內建瀏覽器錄影或存檔常會失敗，提醒改用 Safari／Chrome */
+  var inApp=/Line\/|FBAN|FBAV|FB_IAB|Instagram|MicroMessenger/i.test(navigator.userAgent||"");
+  if(inApp) $("inAppWarn").hidden=false;
+
   $("startCamBtn").onclick=function(){
     $("camErr").textContent="";
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
